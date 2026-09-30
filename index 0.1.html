@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Dashboard — Verma Jewellers</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --navy:#143d6b; --navy-dark:#0a2240; --navy-light:#e9eef6;
+    --gold:#d4af37; --gold-dark:#9c7a1e; --gold-light:#faf3dd;
+    --ivory:#f7f8fa; --card:#ffffff; --ink:#20241f;
+    --muted:#6f7783; --line:#e2e5ea;
+    --pass:#2f7d5b; --pass-bg:#e7f3ec;
+    --fail:#b23b3b; --fail-bg:#fbeae6;
+    --warn:#c08a1e; --warn-bg:#fbf1df;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--ivory); color:var(--ink); font-family:'Segoe UI',Arial,sans-serif; -webkit-font-smoothing:antialiased;}
+  h1,h2,h3{font-family:Georgia,'Times New Roman',serif; margin:0;}
+
+  header.top{background:var(--navy); color:#f4efe2; padding:18px 26px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; border-bottom:4px solid var(--gold); position:sticky; top:0; z-index:20;}
+  header.top h1{font-size:22px;}
+  header.top .sub{font-size:12px; color:#c9c2ac; margin-top:3px;}
+  .refresh-row{display:flex; align-items:center; gap:14px; font-size:12px; color:#d8d2be;}
+  button.refresh{background:var(--gold); color:#2a2110; border:none; padding:9px 18px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px;}
+  button.refresh:hover{background:#c9a133;}
+
+  main{max-width:1400px; margin:0 auto; padding:22px 20px 60px;}
+
+  #status{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px 20px; margin-bottom:20px; color:var(--muted);}
+  #status.err{color:var(--fail); border-color:var(--fail);}
+
+  /* Global location slicer */
+  .loc-slicer{display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--navy-dark); padding:12px 18px; border-radius:10px; margin-bottom:18px;}
+  .loc-slicer .lbl{font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#c9c2ac;}
+  .loc-chip{padding:7px 16px; border-radius:999px; font-size:13px; font-weight:600; cursor:pointer; border:1.5px solid #3a5d8a; background:transparent; color:#dce6f2;}
+  .loc-chip.active{background:var(--gold); color:#2a2110; border-color:var(--gold);}
+
+  .section-title{display:flex; align-items:baseline; gap:10px; margin:28px 0 12px;}
+  .section-title h2{font-size:19px; color:var(--navy);}
+  .section-title .step-tag{font-size:11px; color:var(--gold-dark); background:var(--gold-light); padding:3px 10px; border-radius:999px; border:1px solid var(--gold);}
+
+  .kpi-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:12px;}
+  .kpi{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px;}
+  .kpi .label{font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px;}
+  .kpi .value{font-family:Georgia,serif; font-size:23px; margin-top:5px; color:var(--navy);}
+  .kpi .value.pass{color:var(--pass);} .kpi .value.fail{color:var(--fail);}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:16px;}
+  .card h3{font-size:15px; color:var(--navy); margin-bottom:4px;}
+  .card .card-sub{font-size:11.5px; color:var(--muted); margin-bottom:12px;}
+  .card canvas{max-height:230px;}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  .grid-3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{text-align:left; background:var(--navy); color:#f4efe2; padding:8px 10px; white-space:nowrap;}
+  tbody td{padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tbody tr:nth-child(even){background:#fbf9f4;}
+  .table-wrap{max-height:420px; overflow:auto; border:1px solid var(--line); border-radius:8px;}
+  th.sortable{cursor:pointer;}
+
+  .badge{display:inline-block; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:700;}
+  .badge.pass{background:var(--pass-bg); color:var(--pass);}
+  .badge.fail{background:var(--fail-bg); color:var(--fail);}
+  .badge.abs{background:#eee; color:#777;}
+  .badge.pending{background:var(--warn-bg); color:var(--warn);}
+  .badge.done{background:var(--pass-bg); color:var(--pass);}
+  .badge.upcoming{background:var(--navy-light); color:var(--navy);}
+  .lowscore{color:var(--fail); font-weight:700;}
+
+  .loc-tag{display:inline-block; background:var(--navy-light); color:var(--navy); font-size:10.5px; padding:1px 8px; border-radius:999px; margin:1px 3px 1px 0;}
+
+  .filter-bar{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px;}
+  .filter-row{display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;}
+  .filter-group{min-width:140px;}
+  .filter-group label{display:block; font-size:10px; text-transform:uppercase; color:var(--muted); letter-spacing:.3px; margin-bottom:5px;}
+  .chips{display:flex; flex-wrap:wrap; gap:5px; max-width:260px;}
+  .chip{border:1px solid var(--line); background:var(--ivory); color:var(--ink); padding:4px 10px; border-radius:999px; font-size:11.5px; cursor:pointer;}
+  .chip.active{background:var(--navy); color:#fff; border-color:var(--navy);}
+  select[multiple]{border:1px solid var(--line); border-radius:6px; padding:5px 7px; font-size:12px; min-width:140px; height:62px;}
+  input#searchBox{border:1px solid var(--line); border-radius:6px; padding:6px 9px; font-size:12px; min-width:170px;}
+  .reset-btn{background:none; border:1px solid var(--navy); color:var(--navy); padding:6px 12px; border-radius:6px; font-size:11.5px; cursor:pointer; font-weight:600;}
+  .reset-btn:hover{background:var(--navy); color:#fff;}
+
+  .attention{border:1px solid var(--fail); background:var(--fail-bg);}
+  .attention h3{color:var(--fail);}
+  .attention ul{list-style:none; margin:0; padding:0; max-height:210px; overflow-y:auto;}
+  .attention li{display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px dashed #e8c9c1; font-size:12px;}
+  .attention .sc{font-weight:700; color:var(--fail);}
+
+  footer{text-align:center; color:var(--muted); font-size:11px; padding:26px 0 10px;}
+  a.remark-link{color:var(--navy); text-decoration:underline; font-size:11px;}
+
+  @media (max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr);} .grid-2,.grid-3{grid-template-columns:1fr;}}
+  @media (max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Training Dashboard</h1>
+    <div class="sub">Employee List · Merged Assessment · Training Tracker — Verma Jewellers</div>
+  </div>
+  <div class="refresh-row">
+    <span id="lastUpdated">Loading…</span>
+    <button class="refresh" onclick="loadData()">Refresh data</button>
+  </div>
+</header>
+
+<main>
+  <div id="status">Fetching live assessment data from Google Sheets…</div>
+
+  <div id="dashboardBody" style="display:none;">
+
+    <!-- STEP 7: Global Location Slicer -->
+    <div class="loc-slicer">
+      <span class="lbl">Location filter</span>
+      <div id="locSlicerChips"></div>
+    </div>
+
+    <!-- STEP 8: Overall Summary KPI cards -->
+    <div class="section-title"><h2>Overall Summary</h2><span class="step-tag">Step 8</span></div>
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi"><div class="label">Total Employees</div><div class="value" id="kTotalEmp">–</div></div>
+      <div class="kpi"><div class="label">Total Trained</div><div class="value pass" id="kTrained">–</div></div>
+      <div class="kpi"><div class="label">Total Not Trained</div><div class="value fail" id="kNotTrained">–</div></div>
+      <div class="kpi"><div class="label">Assessment Completed</div><div class="value" id="kAssessComplete">–</div></div>
+      <div class="kpi"><div class="label">Assessment Pending</div><div class="value" id="kAssessPending">–</div></div>
+      <div class="kpi"><div class="label">Average Score</div><div class="value" id="kAvgScore">–</div></div>
+      <div class="kpi"><div class="label">Total Trainings</div><div class="value" id="kTotalTrainings">–</div></div>
+      <div class="kpi"><div class="label">Upcoming Trainings</div><div class="value" id="kUpcoming">–</div></div>
+      <div class="kpi"><div class="label">Total Trainers</div><div class="value" id="kTrainers">–</div></div>
+      <div class="kpi"><div class="label">Total Locations</div><div class="value" id="kLocations">–</div></div>
+    </div>
+
+    <!-- STEP 1 + 2 + 3 combined: Location-wise Summary -->
+    <div class="section-title"><h2>Location-wise Summary</h2><span class="step-tag">Steps 1–3</span></div>
+    <div class="card">
+      <div class="card-sub">Always shows every location side by side, regardless of the filter above — this is the comparison view.</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Location</th><th>Total Employees</th><th>Trained</th><th>Not Trained</th><th>Attendance %</th><th>Assessment Completed</th><th>Assessment Pending</th><th>Avg Score</th></tr></thead>
+          <tbody id="locSummaryBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- STEP 4 + 5: Training-wise Summary -->
+    <div class="section-title"><h2>Training-wise Summary</h2><span class="step-tag">Steps 4–5</span></div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Completed Trainings</h3>
+        <div class="card-sub" id="completedSub"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Training</th><th>Phase</th><th>Date</th><th>Trainer(s) &amp; Location</th><th>Attendance</th><th>Avg Score</th><th>Pass %</th></tr></thead>
+            <tbody id="completedBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Upcoming / Planned Trainings</h3>
+        <div class="card-sub" id="upcomingSub"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Training Name</th><th>Status</th></tr></thead>
+            <tbody id="upcomingBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Trainer Directory</h3>
+      <div class="card-sub">Every trainer identified in the Training Tracker sheet, with the sessions and locations they've covered.</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Trainer</th><th>Sessions Conducted</th><th>Locations Covered</th><th>Details</th></tr></thead>
+          <tbody id="trainerDirBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- STEP 3 detail: Assessment Summary -->
+    <div class="section-title"><h2>Assessment Summary</h2><span class="step-tag">Step 3</span></div>
+    <div class="filter-bar">
+      <div class="filter-row">
+        <div class="filter-group"><label>Assessment Type</label><div class="chips" id="f_assess"></div></div>
+        <div class="filter-group"><label>Pass / Fail</label><div class="chips" id="f_passfail"></div></div>
+        <div class="filter-group"><label>Department</label><select id="f_department" multiple></select></div>
+        <div class="filter-group"><label>Training</label><select id="f_training" multiple></select></div>
+        <div class="filter-group"><label>Trainer</label><select id="f_trainer" multiple></select></div>
+        <div class="filter-group"><label>Search employee</label><input id="searchBox" type="text" placeholder="Name or ID…"></div>
+        <button class="reset-btn" onclick="resetFilters()">Reset filters</button>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3>Department-wise performance</h3><canvas id="chartDept"></canvas></div>
+      <div class="card"><h3>Training-wise performance (live assessment data)</h3><canvas id="chartTraining"></canvas></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3>Pre vs Post — score improvement</h3><canvas id="chartPrePost"></canvas></div>
+      <div class="card attention"><h3>Needs attention (Fail, absent, or &lt;50%)</h3><ul id="attentionList"></ul></div>
+    </div>
+
+    <!-- STEP 6: Employee-wise Details -->
+    <div class="section-title"><h2>Employee-wise Details</h2><span class="step-tag">Step 6</span></div>
+    <div class="card">
+      <div class="card-sub" id="empTableSub"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortBy('name')">Employee</th>
+              <th class="sortable" onclick="sortBy('id')">ID</th>
+              <th class="sortable" onclick="sortBy('loc')">Location</th>
+              <th class="sortable" onclick="sortBy('training')">Training</th>
+              <th class="sortable" onclick="sortBy('attendedTxt')">Attendance</th>
+              <th class="sortable" onclick="sortBy('trainer')">Trainer</th>
+              <th class="sortable" onclick="sortBy('assessStatus')">Assessment Status</th>
+              <th class="sortable" onclick="sortBy('score')">Score</th>
+              <th class="sortable" onclick="sortBy('date')">Training Date</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>Assessment data: live from Google Sheets (Merged Assessment tab) · Employee roster &amp; Training Tracker: embedded snapshot — ask to make these live once their tab links are available</footer>
+</main>
+
+<script>
+const SHEET_ID = "1SJMYTky9wZ0SXDTALpbrAGQoff0XqwI0zfa30RdSm18";
+const GID = "1466753186";
+const CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/export?format=csv&gid=" + GID;
+
+const DEPT_MAP = { gre:'GRE', fm:'FM', crm:'CRM', btl:'BTL', jc:'Jewel Club', ho:'Head Office',
+  sale:'Sales', sales:'Sales', 'sale expert':'Sales Expert', "sale's assistant":'Sales Assistant',
+  'sales assistant':'Sales Assistant', 'silver sale':'Silver Sales', 'silver sales':'Silver Sales',
+  'silver ho':'Silver HO', 'repair & maintance':'Repair & Maintenance', 'wedding crm':'Wedding CRM' };
+
+const ALIASES = {
+  id:['employeeid','ecode','employeecode','empid'],
+  name:['employeename','staffname','name'],
+  dept:['department','dept'],
+  loc:['location','store','branch','boutique'],
+  training:['trainingname','trainingtopic','training','topic'],
+  type:['assessmenttype','assesmenttype','assessment','type'],
+  date:['trainingdate','date'],
+  attended:['attendedyesno','attended','attendance'],
+  correct:['correctanswers','correct'],
+  total:['totalquestions','totalquestion','total'],
+  score:['scorepct','scorepercent','score'],
+  pass:['passfail','result','status'],
+  trainer:['trainername','trainer']
+};
+
+function norm(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); }
+function clean(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+function titleTrim(s){ const v=clean(s); return v ? v.replace(/\b[a-z]/g,c=>c.toUpperCase()) : ''; }
+function fixDept(s){ const v=clean(s).toLowerCase(); if(!v) return 'Unspecified'; if(DEPT_MAP[v]) return DEPT_MAP[v]; return v.replace(/\b[a-z]/g,c=>c.toUpperCase()); }
+function avg(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function pct(n,d){ return d? (n/d*100) : 0; }
+function fmtPct(v){ return v==null ? '–' : v.toFixed(1)+'%'; }
+function uniqueSorted(arr,key){ return [...new Set(arr.map(r=>r[key]).filter(Boolean))].sort(); }
+
+// ---------- Embedded roster & training tracker snapshots ----------
+const ROSTER_RAW = [{"id":"VJS0001","name":"Madan .","loc":"Rohru","dept":"Sales","designation":"Floor Manager"},{"id":"VJS0002","name":"Vikram Singh Thakur","loc":"Solan","dept":"Liasioning","designation":"Liasioning"},{"id":"VJS0003","name":"Hari Chand Sharma","loc":"Solan","dept":"Purchase","designation":"Purchase Executive"},{"id":"VJS0004","name":"Sheesh Ram Thakur","loc":"Exhibition","dept":"Sales","designation":"Exhibition Manager"},{"id":"VJS0005","name":"Naresh Dogra","loc":"Solan","dept":"Sales","designation":"Floor Manager"},{"id":"VJS0006","name":"Sunil Dutt","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0008","name":"Sunil Gandhi","loc":"Solan","dept":"Merchandiser","designation":"Gold Merchandiser"},{"id":"VJS0009","name":"Panch Manna","loc":"Solan","dept":"Sales","designation":"Artisan"},{"id":"VJS0010","name":"Surender Singh","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0011","name":"Rajesh Kumar","loc":"Solan","dept":"Sales","designation":"Floor Manager"},{"id":"VJS0013","name":"Tapan Thakur","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0014","name":"Varun Garg","loc":"Solan","dept":"Wedding","designation":"Wedding Executive"},{"id":"VJS0016","name":"Raghuveer Singh Singh","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0017","name":"Dinesh Kumar","loc":"Solan","dept":"Purchase","designation":"Purchase Executive"},{"id":"VJS0019","name":"Dishant Verma","loc":"Solan","dept":"IT","designation":"Sr Software Executive"},{"id":"VJS0020","name":"Veer Bahadur","loc":"Solan","dept":"MDO","designation":"Dme"},{"id":"VJS0021","name":"Sunil Chauhan","loc":"Solan","dept":"Liasioning","designation":"Liasioning Executive"},{"id":"VJS0023","name":"Jatin Kumar","loc":"Solan","dept":"Purchase","designation":"Purchase Executive"},{"id":"VJS0024","name":"Mukesh Rangarh","loc":"Exhibition","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0025","name":"Ram Swaroop Sharma","loc":"Solan","dept":"Admin","designation":"Security"},{"id":"VJS0027","name":"Yash Pal Sharma","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0029","name":"Rati Ram","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0030","name":"Reena Devi","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0032","name":"Sangeeta Verma","loc":"Solan","dept":"HR","designation":"Hr Lead"},{"id":"VJS0033","name":"Jitender Sharma","loc":"Rohru","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0036","name":"Vaishali Thakur","loc":"Exhibition","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0038","name":"Sneha Thakur","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0039","name":"Shalini Aulakh","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0040","name":"Mona .","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0041","name":"Ajay Thakur","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0043","name":"Manoj Verma","loc":"Solan","dept":"Admin","designation":"Driver"},{"id":"VJS0044","name":"Rajat Kumar","loc":"Rohru","dept":"Sales","designation":"Floor Manager Trainee"},{"id":"VJS0045","name":"Lok Nath","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0046","name":"Bhagender Sharma","loc":"Exhibition","dept":"Admin OFC","designation":"Admin Executive - Repair & Maintance"},{"id":"VJS0047","name":"Govind Verma","loc":"Solan","dept":"Sales","designation":"Sil Br Sales Executive"},{"id":"VJS0048","name":"Vandana Devi","loc":"Solan","dept":"Sales","designation":"Sil Ho Sales Executive"},{"id":"VJS0049","name":"Sunil Attri","loc":"Exhibition","dept":"Sales","designation":"Silver Floor Manager Trainee"},{"id":"VJS0050","name":"Pooja Devi","loc":"Solan","dept":"Accounts","designation":"Account Executive"},{"id":"VJS0051","name":"Meera Devi","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0054","name":"Aruna Devi","loc":"Solan","dept":"Sales","designation":"Sil Br Sales Executive"},{"id":"VJS0055","name":"Sapna Thakur","loc":"Solan","dept":"Sales","designation":"Repair And Order Executive Trainee"},{"id":"VJS0063","name":"Ritika Dhiman","loc":"Solan","dept":"HR","designation":"Hr Executive"},{"id":"VJS0064","name":"Sangeeta Kashyap","loc":"Solan","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0065","name":"Kiran Sharma","loc":"Rohru","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0066","name":"Sangeeta Chhetri","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0067","name":"Shruti Thakur","loc":"Solan","dept":"IT","designation":"It Executive"},{"id":"VJS0069","name":"Suman Devi","loc":"Exhibition","dept":"Admin","designation":"House Keeping"},{"id":"VJS0071","name":"Manju Sharma","loc":"Solan","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0073","name":"Kajal Thakur","loc":"Solan","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0075","name":"Anku Bala","loc":"Solan","dept":"Jewel Club","designation":"Jewel Club Crm"},{"id":"VJS0076","name":"Kajal .","loc":"Solan","dept":"Jewel Club","designation":"Jewel Club Crm"},{"id":"VJS0082","name":"Amit Kaushal","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0083","name":"Amit Sharma","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0087","name":"Priyanka .","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0107","name":"Govind .","loc":"Solan","dept":"Admin","designation":"Store Keeper"},{"id":"VJS0109","name":"Shivani .","loc":"Solan","dept":"MARKETING","designation":"Marketing Executive"},{"id":"VJS0112","name":"Dikshit .","loc":"Exhibition","dept":"Accounts","designation":"Cashier"},{"id":"VJS0113","name":"Dinesh Kumar","loc":"Exhibition","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0114","name":"Monika Mehta","loc":"Solan","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0115","name":"Abhishek Abhi Sharma","loc":"Exhibition","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0119","name":"Bhupender Singh","loc":"Exhibition","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0128","name":"Preeti Thakur","loc":"Solan","dept":"Jewel Club","designation":"Jewel Club Crm"},{"id":"VJS0129","name":"Purnima Thakur","loc":"Solan","dept":"Accounts","designation":"Cashier"},{"id":"VJS0137","name":"Kumari Sakshi","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0138","name":"Neeta Sharma","loc":"Solan","dept":"Jewel Club","designation":"Jewel Club Crm"},{"id":"VJS0140","name":"Priti Kumari","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0142","name":"Divya .","loc":"Solan","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0144","name":"Arpna .","loc":"Solan","dept":"MARKETING","designation":"Marketing Executive"},{"id":"VJS0154","name":"Satya Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0163","name":"Sonal Chauhan","loc":"Solan","dept":"Sales","designation":"Sale Executive trainee"},{"id":"VJS0165","name":"Kiran Devi","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0166","name":"Tamanna Chauhan","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0171","name":"Rahul Thakur","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0174","name":"Lata Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0176","name":"Manoj Kumar","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0177","name":"Madhu Sehgal","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0179","name":"Sanjeev Kumar","loc":"Exhibition","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0180","name":"Bhanu Devi","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0181","name":"Ranjana Chauhan","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0184","name":"Shabhnam Katoch","loc":"Solan","dept":"NPS","designation":"Nps  Head"},{"id":"VJS0185","name":"Arun Kumar Chandel","loc":"Solan","dept":"Accounts","designation":"Accountant"},{"id":"VJS0187","name":"Sourav Prashar","loc":"Solan","dept":"Accounts","designation":"Account Executive"},{"id":"VJS0189","name":"Preeti Sharma","loc":"Solan","dept":"NPS","designation":"Nps Crm"},{"id":"VJS0197","name":"Shubham Jaswal","loc":"Solan","dept":"MDO","designation":"Business Coordinator"},{"id":"VJS0199","name":"Prince Dogra","loc":"Exhibition","dept":"MDO","designation":"New Projects"},{"id":"VJS0201","name":"Manisha .","loc":"Solan","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0202","name":"Vipul Sharma","loc":"Rohru","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0205","name":"Shruti Verma","loc":"Rohru","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0206","name":"Nek Raj Ranta","loc":"Rohru","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0207","name":"Deepanshu .","loc":"Rohru","dept":"Accounts","designation":"Cashier"},{"id":"VJS0208","name":"Ritik Rohan","loc":"Exhibition","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0210","name":"Saurav Dharta","loc":"Rohru","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0211","name":"Shivani Darta","loc":"Rohru","dept":"Sales","designation":"Crm"},{"id":"VJS0214","name":"Priyanka Thakur","loc":"Solan","dept":"ASP","designation":"Asp Head"},{"id":"VJS0215","name":"Sunil Kumar","loc":"Solan","dept":"Merchandiser","designation":"Purchase Head"},{"id":"VJS0217","name":"Gian Singh","loc":"Rohru","dept":"Admin","designation":"Security"},{"id":"VJS0222","name":"Avijit Ghoral","loc":"Rohru","dept":"Sales","designation":"Artisan"},{"id":"VJS0224","name":"Sandeep Rahi","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0227","name":"Virender Kumar","loc":"Solan","dept":"Sales","designation":"Sale Expert Trainee"},{"id":"VJS0228","name":"Muskan .","loc":"Solan","dept":"Sales","designation":"Gre"},{"id":"VJS0229","name":"Manish Thakur","loc":"Solan","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0232","name":"Deepika Chauhan","loc":"Rohru","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0234","name":"Mrinal .","loc":"Exhibition","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0235","name":"Rajeev Kumar","loc":"Exhibition","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0237","name":"Sunita Devi","loc":"Rohru","dept":"Admin","designation":"House Keeping"},{"id":"VJS0238","name":"Pooja .","loc":"Rohru","dept":"Admin","designation":"House Keeping"},{"id":"VJS0239","name":"Anuj Rahi","loc":"Solan","dept":"Purchase","designation":"Order & Repair Executive"},{"id":"VJS0243","name":"Sita .","loc":"Rohru","dept":"Admin","designation":"House Keeping"},{"id":"VJS0244","name":"Preeti .","loc":"Rohru","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0245","name":"Muskan .","loc":"Rohru","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0246","name":"Shanta Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0247","name":"Munish Kumar","loc":"Rohru","dept":"Jewel Club","designation":"Btl Executive"},{"id":"VJS0249","name":"Priyanka .","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0250","name":"Kumari Priyanka","loc":"Solan","dept":"Jewel Club","designation":"Jewel Club Crm"},{"id":"VJS0252","name":"Kritika Panwar","loc":"Solan","dept":"Sales","designation":"Sale Executive Trainee"},{"id":"VJS0253","name":"Nitima Kumari","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0254","name":"Amandeep Kumar","loc":"Solan","dept":"Admin","designation":"Driver"},{"id":"VJS0255","name":"Richu Kumari","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0258","name":"Himani Verma","loc":"Solan","dept":"HR","designation":"Hr Executive"},{"id":"VJS0262","name":"Satya Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0263","name":"Nikhil Ramketa","loc":"Rohru","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0264","name":"Aakash Koul","loc":"Solan","dept":"MDO","designation":"Executive Assistant"},{"id":"VJS0265","name":"Geeta Thakur","loc":"Solan","dept":"Sales","designation":"Sales Executive"},{"id":"VJS0266","name":"Raj Kumar","loc":"Solan","dept":"Admin","designation":"Driver"},{"id":"VJS0267","name":"Vandana Katoch","loc":"Solan","dept":"MDO","designation":"Process Co-Ordinator"},{"id":"VJS0268","name":"Priyanka Yadav","loc":"Solan","dept":"Merchandiser","designation":"Diamond Merchandiser"},{"id":"VJS0271","name":"Kavita 9805337159 Kavita","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0274","name":"Shikhar Vashisht","loc":"Solan","dept":"Accounts","designation":"Account Executive"},{"id":"VJS0275","name":"Prachi Singh","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0276","name":"Sweety Dharta","loc":"Rohru","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0277","name":"Babita Babita","loc":"Solan","dept":"Sales","designation":"Gre"},{"id":"VJS0278","name":"Sarla Devi","loc":"Solan","dept":"Sales","designation":"Gre"},{"id":"VJS0281","name":"Devyansh Chauhan","loc":"Solan","dept":"MARKETING","designation":"Assistant Manager Digital Marketing"},{"id":"VJS0283","name":"Shubham Shubham","loc":"Exhibition","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0285","name":"Aditya  Aditya","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0287","name":"Raj Kumar","loc":"Solan","dept":"Admin","designation":"Security"},{"id":"VJS0288","name":"Nitin Nitin","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0289","name":"Munish Kumar","loc":"Exhibition","dept":"Admin","designation":"Security Gaurd"},{"id":"VJS0290","name":"Monika Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0292","name":"Nihal Kashyap","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0293","name":"Swastika Swastika","loc":"Solan","dept":"MDO","designation":"Mis Executive"},{"id":"VJS0295","name":"Arpit Thakur","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0296","name":"Rakesh Kumar","loc":"Solan","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0297","name":"Shubham Shubham","loc":"Solan","dept":"Sales","designation":"Sale Executive Trainee"},{"id":"VJS0298","name":"Kajal","loc":"Solan","dept":"Sales","designation":"Sale Executive"},{"id":"VJS0300","name":"Dishant Thakur","loc":"Exhibition","dept":"Sales","designation":"Gre"},{"id":"VJS0302","name":"Diwakar Diwakar","loc":"Solan","dept":"Accounts","designation":"Billing Executive"},{"id":"VJS0304","name":"Sunita Sunita","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0306","name":"Jitender Kashyap","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0309","name":"Shivam Gupta","loc":"Solan","dept":"IT","designation":"Sr Software Executive"},{"id":"VJS0310","name":"Sanjay Kumar","loc":"Solan","dept":"Wedding","designation":"Wedding Lead"},{"id":"VJS0311","name":"Nitin Jain","loc":"Solan","dept":"IT","designation":"It Hardware Executive"},{"id":"VJS0313","name":"Kashmir Singh","loc":"Exhibition","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0315","name":"Simran Chauhan","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0316","name":"Uday Dutt","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0318","name":"Sumit Kumar","loc":"Solan","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0319","name":"Sujal Thakur","loc":"Exhibition","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0320","name":"Ranveer Kumar","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0321","name":"Rani Mehta","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0322","name":"Harish Kumar","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0326","name":"Rahul Bajaj","loc":"Solan","dept":"MDO","designation":"Internal Auditor"},{"id":"VJS0332","name":"Harsh Kumar","loc":"Solan","dept":"MDO","designation":"Mis Executive"},{"id":"VJS0334","name":"Aadarsh Thakur","loc":"Exhibition","dept":"BTL","designation":"Btl Executive"},{"id":"VJS0335","name":"Pankaj Vyas","loc":"Solan","dept":"Sales","designation":"Store Manager"},{"id":"VJS0337","name":"Kamal Jeet","loc":"Solan","dept":"Sales","designation":"Sale Expert"},{"id":"VJS0338","name":"Manoj Kumar","loc":"Solan","dept":"Sales","designation":"Sale Expert"},{"id":"VJS0339","name":"Tripta Tripta","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0340","name":"Rahul Chauhan","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0341","name":"Neeraj Shukla","loc":"Solan","dept":"Admin","designation":"Project Manager"},{"id":"VJS0342","name":"Ankita Thakur","loc":"Solan","dept":"ASP","designation":"Asp Crm"},{"id":"VJS0343","name":"Gagan Kumar","loc":"Solan","dept":"Sales","designation":"Sale Expert"},{"id":"VJS0346","name":"George Nag","loc":"Solan","dept":"Merchandiser","designation":"Merchandiser Head"},{"id":"VJS0347","name":"Avantika Negi","loc":"Solan","dept":"NPS","designation":"Nps Crm"},{"id":"VJS0348","name":"Puneet Verma","loc":"Solan","dept":"Sales","designation":"Dimond Floor Incharge"},{"id":"VJS0349","name":"Shruti Falta","loc":"Rohru","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0350","name":"Ranvir Singh","loc":"Rohru","dept":"Sales","designation":"Store Manager"},{"id":"VJS0351","name":"Hem Lata","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0352","name":"Sahil Kumar","loc":"Solan","dept":"Sales","designation":"Sale Expert"},{"id":"VJS0353","name":"Dharmendra Goyal","loc":"Solan","dept":"CRM","designation":"Crm Head"},{"id":"VJS0354","name":"Anshul Kumar","loc":"Solan","dept":"Purchase","designation":"Executive - Quality Checking And Tagging"},{"id":"VJS0355","name":"Nitika Thakur","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0357","name":"Kuldeep Kumar","loc":"Solan","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0358","name":"Sapna Negi","loc":"Exhibition","dept":"Sales","designation":"Gre"},{"id":"VJS0359","name":"Sakshi Verma","loc":"Solan","dept":"Wedding","designation":"Wedding Crm Telecaller"},{"id":"VJS0360","name":"Divya Chauhan","loc":"Solan","dept":"Jewel Club","designation":"Jewel Club Crm"},{"id":"VJS0361","name":"Preeti Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0362","name":"Rahul Banolta","loc":"Solan","dept":"Sales","designation":"Repair And Order Executive Trainee"},{"id":"VJS0363","name":"Harish Chandra","loc":"Solan","dept":"STORE","designation":"Store Executive"},{"id":"VJS0364","name":"Saurabh Sharma","loc":"Exhibition","dept":"Billing","designation":"Billing Executive"},{"id":"VJS0366","name":"Kiran Devi","loc":"Solan","dept":"Admin","designation":"House Keeping"},{"id":"VJS0367","name":"Himani Sharma","loc":"Rohru","dept":"Sales","designation":"Sale Assistant"},{"id":"VJS0368","name":"Desh Deepak","loc":"Solan","dept":"Purchase","designation":"Qc Head"},{"id":"VJS0369","name":"Vandana Devi","loc":"Exhibition","dept":"Sales","designation":"Gre"},{"id":"VJS0370","name":"Atam Parkash","loc":"Solan","dept":"MARKETING","designation":"Marketing Lead"},{"id":"VJS0371","name":"Ashish Kumar","loc":"Rohru","dept":"Admin","designation":"Security Gaurd"},{"id":"VJS0372","name":"Kuldeep Kumar","loc":"Rohru","dept":"Jewel Club","designation":"Btl Executive"},{"id":"VJS0373","name":"Kajal Chauhan","loc":"Exhibition","dept":"Sales","designation":"Gre"},{"id":"VJS0374","name":"Shivanu Kaushik","loc":"Solan","dept":"MARKETING","designation":"BTL Head"},{"id":"VJS0192","name":"Richu Duggal .","loc":"Rohru","dept":"Sales","designation":"Sale Expert"},{"id":"VJS0329","name":"Narender","loc":"Rohru","dept":"BTL","designation":"Btl Executive"}];
+const TRACKER_RAW = {"sessions":[{"topic":"Orientation, Brand Heritage & CX Fundamentals","type":"Pre","trainerRaw":"Pankaj  Vyas - Solan \nSheesh ram -Exhibition \nRanveer singh -Rohru","date":"2026-07-16","nominated":71.0,"attended":54.0,"attendancePct":76.0,"avgScore":63.8,"passPct":52.1,"assessmentStatus":"Completed","remarks":null},{"topic":"Orientation, Brand Heritage & CX Fundamentals","type":"Post","trainerRaw":"Pankaj  Vyas - Solan \nSheesh ram -Exhibition \nRanveer singh -Rohru","date":"2026-07-22","nominated":69.0,"attended":61.0,"attendancePct":88.0,"avgScore":81.8,"passPct":84.1,"assessmentStatus":"Completed","remarks":null},{"topic":"Product Knowledge \u2014 Gold, Silver & Traditional Jewellery","type":"Post","trainerRaw":"Pankaj  Vyas - Solan \nSheesh ram -Exhibition \nRanveer singh -Rohru","date":"2026-08-04","nominated":55.0,"attended":48.0,"attendancePct":87.0,"avgScore":80.3,"passPct":83.6,"assessmentStatus":"Completed","remarks":null},{"topic":"Diamond Fundamentals \u2014 4Cs & Certification","type":"Pre","trainerRaw":"Pankaj  Vyas - Solan \nSheesh ram -Exhibition \nRanveer singh -Rohru","date":"2026-08-13","nominated":23.0,"attended":23.0,"attendancePct":100.0,"avgScore":97.0,"passPct":100.0,"assessmentStatus":"Completed","remarks":null},{"topic":"Diamond Fundamentals \u2014 4Cs & Certification","type":"Post","trainerRaw":"Pankaj  Vyas - Solan \nSheesh ram -Exhibition \nRanveer singh -Rohru","date":"2026-08-18","nominated":43.0,"attended":40.0,"attendancePct":93.0,"avgScore":89.5,"passPct":90.7,"assessmentStatus":"Completed","remarks":null},{"topic":"Jewel Club (JC) Plans","type":"Pre","trainerRaw":"Shubham Jaswal  - Solan  \nShubham Jaswal-Rohru","date":"2026-08-29","nominated":11.0,"attended":11.0,"attendancePct":100.0,"avgScore":74.6,"passPct":63.6,"assessmentStatus":"Completed","remarks":"https://docs.google.com/forms/d/e/1FAIpQLScRFyyYByi1oaymet3NBibFYyqqHZWZCGDYxLgb__hUZCHXag/viewform?usp=header"},{"topic":"Jewel Club (JC) Plans","type":"Post","trainerRaw":"Shubham Jaswal  - Solan  \nShubham Jaswal-Rohru","date":"2026-09-07","nominated":11.0,"attended":8.0,"attendancePct":73.0,"avgScore":60.0,"passPct":63.6,"assessmentStatus":"Completed","remarks":"https://docs.google.com/forms/d/e/1FAIpQLSeyldDl0YWv0Sk0v6KYZokPHbfNG_q6XGhM67SgHkBAtNSXrw/viewform?usp=header"},{"topic":"Jewel Club New T&C Training","type":"Post","trainerRaw":"Shubham Jaswal - Solan \nShubham Jaswal-Exhibition \nShubham Jaswal-Rohru","date":null,"nominated":null,"attended":null,"attendancePct":null,"avgScore":null,"passPct":null,"assessmentStatus":"Pending","remarks":null}],"upcoming":[{"name":"Diamond Selling \u2014 Needs-Based (SPIN) Selling"},{"name":"CX Excellence \u2014 Luxury Service Delivery"},{"name":"Cross-Selling & Upselling \u2014 Basket Building Mastery"},{"name":"Jewel Club \u2014 Pitch & Enrollment Mastery"},{"name":"Relationship Building & CRM Discipline"},{"name":"CRM & Customer Re-Engagement Strategy"},{"name":"Re-Engagement \u2014 Live Campaign Execution"},{"name":"Exhibition Sales \u2014 Mobile Retail Excellence"},{"name":"Exhibition Sales \u2014 Full Simulation & Mastery"},{"name":"Exhibition Sales & Post-Exhibition Re-Engagement"},{"name":"Exhibition Re-Engagement \u2014 Visitor Data Conversion"}]};
+
+// Normalize roster the same way live rows are normalized, so spelling/casing
+// differences in the source sheet don't create phantom duplicate groups.
+const ROSTER = ROSTER_RAW.map(function(e){
+  return {
+    id: clean(e.id).toUpperCase(),
+    name: clean(e.name),
+    loc: titleTrim(e.loc) || 'Unspecified',
+    dept: fixDept(e.dept),
+    designation: clean(e.designation)
+  };
+});
+const ROSTER_BY_ID = {};
+const ROSTER_BY_NAME = {};
+ROSTER.forEach(function(e){
+  ROSTER_BY_ID[e.id] = e;
+  const n = norm(e.name);
+  if(!ROSTER_BY_NAME[n]) ROSTER_BY_NAME[n] = e;
+});
+const ALL_LOCATIONS = uniqueSorted(ROSTER, 'loc');
+
+function reconcile(r){
+  let m = ROSTER_BY_ID[clean(r.id).toUpperCase()];
+  if(!m) m = ROSTER_BY_NAME[norm(r.name)];
+  if(m){ r.id = m.id; r.name = m.name; r.dept = m.dept; r.loc = m.loc; r.matched = true; }
+  else { r.matched = false; }
+  return r;
+}
+
+// ---------- Training Tracker: group Pre/Post rows into one training, build trainer directory ----------
+function normalizeBaseName(topic){
+  return clean(topic).replace(/\s*[-\u2013]?\s*(pre|post)\s*[-\u2013]?\s*assess?ments?\.?\s*$/i, '').trim();
+}
+function parseTrainers(raw){
+  if(!raw) return [];
+  return raw.split('\n').map(function(line){
+    line = line.trim();
+    if(!line) return null;
+    const idx = line.lastIndexOf('-');
+    if(idx>-1){
+      const namePart = clean(line.slice(0, idx));
+      const locPart = titleTrim(line.slice(idx+1));
+      if(namePart) return { name: namePart, loc: locPart || '' };
+    }
+    return { name: clean(line), loc: '' };
+  }).filter(Boolean);
+}
+function buildTrainings(){
+  const groups = {};
+  TRACKER_RAW.sessions.forEach(function(s){
+    const base = normalizeBaseName(s.topic);
+    if(!groups[base]) groups[base] = { name: base, status:'Conducted', sessions:[], trainersMap:{} };
+    const trainers = parseTrainers(s.trainerRaw);
+    trainers.forEach(function(t){ groups[base].trainersMap[t.name.toLowerCase()+'|'+t.loc.toLowerCase()] = t; });
+    groups[base].sessions.push({
+      type: s.type, date: s.date, nominated: s.nominated, attended: s.attended,
+      attendancePct: s.attendancePct, avgScore: s.avgScore, passPct: s.passPct,
+      trainers: trainers, remarks: s.remarks, assessmentStatus: s.assessmentStatus || 'Completed'
+    });
+  });
+  (TRACKER_RAW.upcoming||[]).forEach(function(u){
+    const base = clean(u.name);
+    if(!groups[base]) groups[base] = { name: base, status:'Upcoming', sessions:[], trainersMap:{} };
+  });
+  return Object.values(groups).map(function(g){
+    const trainers = Object.values(g.trainersMap);
+    const locations = Array.from(new Set(trainers.map(function(t){return t.loc;}).filter(Boolean)));
+    return { name: g.name, status: g.status, sessions: g.sessions, trainers: trainers, locations: locations };
+  });
+}
+function buildTrainerDirectory(trainings){
+  const dir = {};
+  trainings.forEach(function(t){
+    t.sessions.forEach(function(s){
+      s.trainers.forEach(function(tr){
+        if(!dir[tr.name]) dir[tr.name] = [];
+        dir[tr.name].push({ training: t.name, loc: tr.loc, date: s.date, type: s.type });
+      });
+    });
+  });
+  return dir;
+}
+const TRAININGS = buildTrainings();
+const TRAINER_DIR = buildTrainerDirectory(TRAININGS);
+
+// ---------- State ----------
+let RAW = [];        // live assessment rows, reconciled
+let FILTERED = [];   // assessment rows after local filters + global location
+let globalLoc = 'All';
+let filters = { assess:new Set(), passfail:new Set(), dept:new Set(), training:new Set(), trainer:new Set(), search:"" };
+let sortState = { key:'score', dir:1 };
+let charts = {};
+
+// ---------- CSV parsing / header detection ----------
+function fieldMap(header){
+  const h = header.map(norm);
+  const map = {};
+  Object.keys(ALIASES).forEach(key=>{
+    let idx=-1;
+    ALIASES[key].forEach(a=>{ if(idx<0) idx = h.indexOf(a); });
+    if(idx<0) ALIASES[key].forEach(a=>{ if(idx<0) idx = h.findIndex(x=>x.indexOf(a)===0); });
+    if(idx<0) ALIASES[key].forEach(a=>{ if(idx<0) idx = h.findIndex(x=>x.indexOf(a)>=0); });
+    map[key]=idx;
+  });
+  return map;
+}
+function findHeaderRow(matrix){
+  for(let i=0;i<Math.min(matrix.length,12);i++){
+    const m = fieldMap(matrix[i]);
+    const hits = Object.keys(m).filter(k=>m[k]>=0).length;
+    if(hits>=7) return {row:i, map:m};
+  }
+  return null;
+}
+
+function loadData(){
+  document.getElementById('status').className='';
+  document.getElementById('status').style.display='block';
+  document.getElementById('status').textContent='Fetching live assessment data from Google Sheets…';
+  document.getElementById('dashboardBody').style.display='none';
+  const bust = CSV_URL + "&_ts=" + Date.now();
+  fetch(bust)
+    .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+    .then(text=>{
+      if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('sheet is not shared publicly');
+      const parsed = Papa.parse(text.trim(), { skipEmptyLines:true });
+      const matrix = parsed.data;
+      const hdr = findHeaderRow(matrix);
+      if(!hdr) throw new Error('expected columns not found');
+      const rows = matrix.slice(hdr.row+1);
+      const map = hdr.map;
+
+      RAW = rows.filter(r=>r.some(x=>String(x).trim()!=='')).map(r=>{
+        const get = k => map[k]>=0 ? r[map[k]] : '';
+        const scoreStr = String(get('score')||'').replace('%','').trim();
+        const correct = parseFloat(get('correct'));
+        const total = parseFloat(get('total'));
+        let score = parseFloat(scoreStr);
+        if(isNaN(score) && !isNaN(correct) && !isNaN(total) && total>0) score = correct/total*100;
+        const rawType = String(get('type')||'');
+        const type = /post/i.test(rawType) ? 'Post' : (/pre/i.test(rawType) ? 'Pre' : (rawType||'Other'));
+        const pf = clean(get('pass'));
+        const rec = {
+          id: clean(get('id')),
+          name: clean(get('name')) || clean(get('id')) || 'Unnamed',
+          dept: fixDept(get('dept')),
+          loc: titleTrim(get('loc')) || 'Unspecified',
+          training: clean(get('training')) || 'Unspecified',
+          type: type,
+          date: clean(get('date')),
+          attended: /^y/i.test(clean(get('attended'))),
+          correct: isNaN(correct)?null:correct,
+          total: isNaN(total)?null:total,
+          score: isNaN(score)?null:score,
+          result: pf ? (/^p/i.test(pf) ? 'PASS':'FAIL') : (score!=null && score>=50 ? 'PASS':'FAIL'),
+          trainer: titleTrim(get('trainer')) || 'Unassigned'
+        };
+        return reconcile(rec);
+      });
+
+      const scores = RAW.map(r=>r.score).filter(s=>s!=null);
+      const max = scores.length? Math.max(...scores) : 0;
+      if(max<=1.0001){ RAW.forEach(r=>{ if(r.score!=null) r.score = r.score*100; }); }
+      RAW.forEach(r=>{ if(r.score!=null) r.score = Math.max(0, Math.min(100, r.score)); });
+
+      document.getElementById('status').style.display='none';
+      document.getElementById('dashboardBody').style.display='block';
+      document.getElementById('lastUpdated').textContent = 'Last refreshed: ' + new Date().toLocaleString();
+      renderLocSlicer();
+      buildFilterOptions();
+      renderAll();
+    })
+    .catch(err=>{
+      const s = document.getElementById('status');
+      s.className='err'; s.style.display='block';
+      s.innerHTML = "Couldn't load live assessment data.<br>Check the sheet is shared as <b>\"Anyone with the link can view\"</b>, then hit Refresh. (" + err.message + ")";
+    });
+}
+
+// ---------- Global location slicer (Step 7) ----------
+function renderLocSlicer(){
+  const el = document.getElementById('locSlicerChips');
+  el.innerHTML = '';
+  const opts = ['All'].concat(ALL_LOCATIONS);
+  opts.forEach(function(loc){
+    const chip = document.createElement('span');
+    chip.className = 'loc-chip' + (globalLoc===loc ? ' active' : '');
+    chip.textContent = loc==='All' ? 'All Locations' : loc;
+    chip.onclick = function(){ globalLoc = loc; renderLocSlicer(); buildFilterOptions(); renderAll(); };
+    el.appendChild(chip);
+  });
+}
+
+// ---------- Local filters (Assessment Summary + Employee table scope) ----------
+function scopedRosterIds(loc){
+  return new Set(ROSTER.filter(e=> loc==='All' || e.loc===loc).map(e=>e.id));
+}
+function assessmentsInScope(loc){
+  const ids = scopedRosterIds(loc);
+  return RAW.filter(r=> loc==='All' ? true : (ids.has(r.id) || r.loc===loc));
+}
+
+function buildFilterOptions(){
+  const pool = assessmentsInScope(globalLoc);
+  renderChipGroup('f_assess', uniqueSorted(pool,'type'), filters.assess, applyFilters);
+  renderChipGroup('f_passfail', ['PASS','FAIL'], filters.passfail, applyFilters);
+  fillMultiSelect('f_department', uniqueSorted(pool,'dept'), filters.dept);
+  fillMultiSelect('f_training', uniqueSorted(pool,'training'), filters.training);
+  fillMultiSelect('f_trainer', uniqueSorted(pool,'trainer'), filters.trainer);
+  document.getElementById('searchBox').oninput = e=>{ filters.search = e.target.value.toLowerCase(); applyFilters(); };
+}
+function renderChipGroup(containerId, values, set, onChange){
+  const c = document.getElementById(containerId); c.innerHTML='';
+  values.forEach(v=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (set.has(v)?' active':'');
+    chip.textContent = v;
+    chip.onclick = ()=>{ set.has(v)?set.delete(v):set.add(v); chip.classList.toggle('active'); onChange(); };
+    c.appendChild(chip);
+  });
+}
+function fillMultiSelect(id, values, set){
+  const sel = document.getElementById(id); sel.innerHTML='';
+  values.forEach(v=>{
+    const opt = document.createElement('option'); opt.value=v; opt.textContent=v;
+    if(set.has(v)) opt.selected=true;
+    sel.appendChild(opt);
+  });
+  sel.onchange = ()=>{ set.clear(); [...sel.selectedOptions].forEach(o=>set.add(o.value)); applyFilters(); };
+}
+function resetFilters(){
+  filters = { assess:new Set(), passfail:new Set(), dept:new Set(), training:new Set(), trainer:new Set(), search:"" };
+  document.getElementById('searchBox').value='';
+  buildFilterOptions(); applyFilters();
+}
+function applyFilters(){
+  const scoped = assessmentsInScope(globalLoc);
+  FILTERED = scoped.filter(r=>{
+    if(filters.assess.size && !filters.assess.has(r.type)) return false;
+    if(filters.passfail.size && !filters.passfail.has(r.result)) return false;
+    if(filters.dept.size && !filters.dept.has(r.dept)) return false;
+    if(filters.training.size && !filters.training.has(r.training)) return false;
+    if(filters.trainer.size && !filters.trainer.has(r.trainer)) return false;
+    if(filters.search){ const hay=(r.name+' '+r.id).toLowerCase(); if(!hay.includes(filters.search)) return false; }
+    return true;
+  });
+  renderAssessmentCharts(); renderAttention(); renderEmployeeTable();
+}
+
+// ---------- Core stat computation (reused for KPIs and location summary) ----------
+function computeCoreStats(rosterSubset, assessSubset){
+  const rosterIds = new Set(rosterSubset.map(e=>e.id));
+  const byEmp = {};
+  assessSubset.forEach(function(r){
+    if(!rosterIds.has(r.id)) return;
+    if(!byEmp[r.id]) byEmp[r.id] = { attended:false, scored:false, scores:[] };
+    if(r.attended){
+      byEmp[r.id].attended = true;
+      if(r.score!=null){ byEmp[r.id].scored = true; byEmp[r.id].scores.push(r.score); }
+    }
+  });
+  const trainedIds = Object.keys(byEmp).filter(id=>byEmp[id].attended);
+  const completedIds = trainedIds.filter(id=>byEmp[id].scored);
+  const pendingIds = trainedIds.filter(id=>!byEmp[id].scored);
+  const allScores = trainedIds.reduce(function(acc,id){ return acc.concat(byEmp[id].scores); }, []);
+  return {
+    totalEmp: rosterSubset.length,
+    trained: trainedIds.length,
+    notTrained: rosterSubset.length - trainedIds.length,
+    completed: completedIds.length,
+    pending: pendingIds.length,
+    avgScore: allScores.length ? avg(allScores) : null,
+    attendancePct: rosterSubset.length ? pct(trainedIds.length, rosterSubset.length) : null
+  };
+}
+
+// ---------- STEP 8: KPI cards ----------
+function renderKPIs(){
+  const scopedRoster = ROSTER.filter(e=> globalLoc==='All' || e.loc===globalLoc);
+  const scopedAssess = assessmentsInScope(globalLoc);
+  const s = computeCoreStats(scopedRoster, scopedAssess);
+
+  document.getElementById('kTotalEmp').textContent = s.totalEmp;
+  document.getElementById('kTrained').textContent = s.trained;
+  document.getElementById('kNotTrained').textContent = s.notTrained;
+  document.getElementById('kAssessComplete').textContent = s.completed;
+  document.getElementById('kAssessPending').textContent = s.pending;
+  document.getElementById('kAvgScore').textContent = fmtPct(s.avgScore);
+
+  const completedTrainings = TRAININGS.filter(t=> t.status==='Conducted' && (globalLoc==='All' || t.locations.indexOf(globalLoc)>=0));
+  const upcomingTrainings = TRAININGS.filter(t=> t.status==='Upcoming');
+  const trainerNames = Object.keys(TRAINER_DIR).filter(function(name){
+    if(globalLoc==='All') return true;
+    return TRAINER_DIR[name].some(function(s){ return s.loc===globalLoc; });
+  });
+
+  document.getElementById('kTotalTrainings').textContent = completedTrainings.length;
+  document.getElementById('kUpcoming').textContent = upcomingTrainings.length;
+  document.getElementById('kTrainers').textContent = trainerNames.length;
+  document.getElementById('kLocations').textContent = ALL_LOCATIONS.length;
+}
+
+// ---------- STEP 1-3: Location-wise summary (always all locations) ----------
+function renderLocationSummary(){
+  const body = document.getElementById('locSummaryBody');
+  body.innerHTML = ALL_LOCATIONS.map(function(loc){
+    const rosterSub = ROSTER.filter(e=>e.loc===loc);
+    const assessSub = assessmentsInScope(loc);
+    const s = computeCoreStats(rosterSub, assessSub);
+    return '<tr><td><b>'+loc+'</b></td><td>'+s.totalEmp+'</td><td>'+s.trained+'</td><td>'+s.notTrained+'</td>'+
+      '<td>'+fmtPct(s.attendancePct)+'</td><td>'+s.completed+'</td><td>'+s.pending+'</td><td>'+fmtPct(s.avgScore)+'</td></tr>';
+  }).join('');
+}
+
+// ---------- STEP 4-5: Training-wise summary ----------
+function trainerCell(trainers){
+  if(!trainers.length) return '<span style="color:#999;">Not assigned</span>';
+  return trainers.map(function(t){ return t.name + (t.loc ? ' <span class="loc-tag">'+t.loc+'</span>' : ''); }).join('<br>');
+}
+function renderTrainingWise(){
+  const completed = TRAININGS.filter(function(t){
+    return t.status==='Conducted' && (globalLoc==='All' || t.locations.indexOf(globalLoc)>=0);
+  });
+  const upcoming = TRAININGS.filter(function(t){ return t.status==='Upcoming'; });
+
+  document.getElementById('completedSub').textContent = completed.length + ' training' + (completed.length===1?'':'s') + ' conducted so far' + (globalLoc!=='All' ? ' involving '+globalLoc : '') + ' — includes trainings where the assessment score is still pending';
+  document.getElementById('upcomingSub').textContent = upcoming.length + ' planned, no trainer or session assigned yet (not location-specific)';
+
+  const cbody = document.getElementById('completedBody');
+  let rowsHtml = '';
+  completed.forEach(function(t){
+    t.sessions.forEach(function(s){
+      const pending = s.assessmentStatus === 'Pending';
+      const statusBadge = pending
+        ? '<span class="badge pending">Assessment Pending</span>'
+        : '<span class="badge done">Assessment Completed</span>';
+      rowsHtml += '<tr><td><b>'+t.name+'</b> '+statusBadge+'</td><td>'+s.type+'</td><td>'+(s.date||'–')+'</td><td>'+trainerCell(s.trainers)+'</td>'+
+        '<td>'+(s.attended!=null?s.attended:'–')+' / '+(s.nominated!=null?s.nominated:'–')+(s.attendancePct!=null?' ('+fmtPct(s.attendancePct)+')':'')+'</td>'+
+        '<td>'+fmtPct(s.avgScore)+'</td><td>'+fmtPct(s.passPct)+'</td></tr>';
+      if(s.remarks){ rowsHtml += '<tr><td></td><td colspan="6"><a class="remark-link" href="'+s.remarks+'" target="_blank" rel="noopener">Assessment form link ↗</a></td></tr>'; }
+    });
+  });
+  cbody.innerHTML = rowsHtml || '<tr><td colspan="7" style="text-align:center;color:#999;">No conducted sessions match this location.</td></tr>';
+
+  const ubody = document.getElementById('upcomingBody');
+  ubody.innerHTML = upcoming.map(function(t,i){
+    return '<tr><td>'+(i+1)+'</td><td>'+t.name+'</td><td><span class="badge upcoming">Upcoming</span></td></tr>';
+  }).join('') || '<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>';
+
+  const tbody = document.getElementById('trainerDirBody');
+  const names = Object.keys(TRAINER_DIR).filter(function(name){
+    if(globalLoc==='All') return true;
+    return TRAINER_DIR[name].some(function(s){ return s.loc===globalLoc; });
+  }).sort();
+  tbody.innerHTML = names.map(function(name){
+    const sessions = TRAINER_DIR[name].filter(function(s){ return globalLoc==='All' || s.loc===globalLoc; });
+    const locs = Array.from(new Set(sessions.map(function(s){return s.loc;}).filter(Boolean)));
+    const details = sessions.map(function(s){ return s.training+' — '+s.type+' ('+(s.date||'–')+')'; }).join('<br>');
+    return '<tr><td><b>'+name+'</b></td><td>'+sessions.length+'</td><td>'+locs.map(function(l){return '<span class="loc-tag">'+l+'</span>';}).join('')+'</td><td style="font-size:11px;">'+details+'</td></tr>';
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:#999;">No trainers match this location.</td></tr>';
+}
+
+// ---------- STEP 3 (charts): Assessment Summary ----------
+function groupAvgPass(data, key){
+  const map = {};
+  data.forEach(r=>{
+    if(!r[key]) return;
+    if(!map[r[key]]) map[r[key]] = { scores:[], pass:0, n:0, att:0 };
+    if(r.attended){ map[r[key]].att++; if(r.score!=null) map[r[key]].scores.push(r.score); if(r.result==='PASS') map[r[key]].pass++; }
+    map[r[key]].n++;
+  });
+  const labels = Object.keys(map).sort();
+  return { labels, avgScores: labels.map(l=>avg(map[l].scores)), passPct: labels.map(l=>pct(map[l].pass, map[l].att)) };
+}
+function barChart(ctx, labels, datasets, onClickCategory){
+  return new Chart(ctx, {
+    type:'bar', data:{ labels, datasets },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true, max:100 } },
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } },
+      onClick:(evt, els)=>{ if(!onClickCategory || !els.length) return; onClickCategory(labels[els[0].index]); } }
+  });
+}
+function destroyChart(name){ if(charts[name]) charts[name].destroy(); }
+
+function renderAssessmentCharts(){
+  const dept = groupAvgPass(FILTERED,'dept');
+  destroyChart('dept');
+  charts.dept = barChart(document.getElementById('chartDept'), dept.labels, [
+    { label:'Avg Score %', data:dept.avgScores, backgroundColor:'#143d6b' },
+    { label:'Pass %', data:dept.passPct, backgroundColor:'#d4af37' }
+  ], label=>{ filters.dept.clear(); filters.dept.add(label); buildFilterOptions(); applyFilters(); });
+
+  const train = groupAvgPass(FILTERED,'training');
+  destroyChart('training');
+  charts.training = barChart(document.getElementById('chartTraining'), train.labels, [
+    { label:'Avg Score %', data:train.avgScores, backgroundColor:'#143d6b' },
+    { label:'Pass %', data:train.passPct, backgroundColor:'#d4af37' }
+  ]);
+
+  const trainings = uniqueSorted(FILTERED,'training');
+  const preAvg = trainings.map(t=> avg(FILTERED.filter(r=>r.training===t && r.type==='Pre' && r.score!=null).map(r=>r.score)) );
+  const postAvg = trainings.map(t=> avg(FILTERED.filter(r=>r.training===t && r.type==='Post' && r.score!=null).map(r=>r.score)) );
+  destroyChart('prepost');
+  charts.prepost = barChart(document.getElementById('chartPrePost'), trainings, [
+    { label:'Pre-assessment avg %', data:preAvg, backgroundColor:'#b23b3b' },
+    { label:'Post-assessment avg %', data:postAvg, backgroundColor:'#2f7d5b' }
+  ]);
+}
+function renderAttention(){
+  const list = document.getElementById('attentionList');
+  const flagged = FILTERED.filter(r=> !r.attended || r.result==='FAIL' || (r.score!=null && r.score<50))
+    .sort((a,b)=>(a.score==null?-1:a.score)-(b.score==null?-1:b.score)).slice(0,60);
+  list.innerHTML='';
+  if(!flagged.length){ list.innerHTML = '<li style="justify-content:center;color:#6f7783;">No one currently flagged 🎉</li>'; return; }
+  flagged.forEach(r=>{
+    const li = document.createElement('li');
+    const scoreTxt = r.attended ? (r.score!=null? r.score.toFixed(0)+'%' : '–') : 'Absent';
+    li.innerHTML = '<span>' + r.name + ' — ' + r.training + ' (' + r.type + ')</span><span class="sc">' + scoreTxt + '</span>';
+    list.appendChild(li);
+  });
+}
+
+// ---------- STEP 6: Employee-wise details ----------
+function assessStatus(r){
+  if(!r.attended) return 'Not Attended';
+  return r.score!=null ? 'Completed' : 'Pending';
+}
+function sortBy(key){
+  if(sortState.key===key) sortState.dir*=-1; else { sortState.key=key; sortState.dir=1; }
+  renderEmployeeTable();
+}
+function renderEmployeeTable(){
+  document.getElementById('empTableSub').textContent = FILTERED.length + ' record' + (FILTERED.length===1?'':'s') + ' in the current selection · click a column heading to sort';
+  const body = document.getElementById('tableBody');
+  const rows = FILTERED.map(function(r){ return Object.assign({}, r, { attendedTxt: r.attended?'Yes':'No', assessStatus: assessStatus(r) }); });
+  rows.sort((a,b)=>{
+    const k=sortState.key;
+    if(k==='score'){ const av=a.score==null?-1:a.score, bv=b.score==null?-1:b.score; return (av-bv)*sortState.dir; }
+    return String(a[k]).localeCompare(String(b[k]))*sortState.dir;
+  });
+  body.innerHTML = rows.map(function(r){
+    const badgeClass = r.assessStatus==='Completed' ? (r.result==='PASS'?'pass':'fail') : (r.assessStatus==='Pending'?'pending':'abs');
+    const scoreTxt = r.score!=null ? r.score.toFixed(1)+'%' : '–';
+    return '<tr>'+
+      '<td>'+r.name+'</td><td>'+r.id+'</td><td>'+r.loc+'</td><td>'+r.training+'</td>'+
+      '<td>'+r.attendedTxt+'</td><td>'+r.trainer+'</td>'+
+      '<td><span class="badge '+badgeClass+'">'+r.assessStatus+(r.assessStatus==='Completed'?' — '+r.result:'')+'</span></td>'+
+      '<td class="'+(r.attended && r.score!=null && r.score<50 ? 'lowscore':'')+'">'+scoreTxt+'</td>'+
+      '<td>'+(r.date||'–')+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderAll(){
+  renderKPIs();
+  renderLocationSummary();
+  renderTrainingWise();
+  applyFilters(); // also triggers charts, attention, employee table
+}
+
+loadData();
+</script>
+</body>
+</html>
